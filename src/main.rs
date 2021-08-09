@@ -5,7 +5,7 @@ use ash::extensions::{
 use ash::util::*;
 // use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::{vk, Entry};
-pub use ash::{Device, EntryCustom, Instance};
+pub use ash::{Device, Instance};
 use std::borrow::Cow;
 use std::default::Default;
 use std::ffi::{CStr, CString};
@@ -65,7 +65,11 @@ fn main() {
         .map(|ext_name| ext_name.as_ptr())
         .collect::<Vec<_>>();
     extension_names_raw.push(DebugUtils::name().as_ptr());
-    println!("surface extensions: {:?}", surface_extensions);
+    println!(
+        "surface extensions: {:?}, {:?}",
+        DebugUtils::name(),
+        surface_extensions
+    );
 
     let instance_create_info = vk::InstanceCreateInfo::builder()
         .application_info(&app_info)
@@ -409,38 +413,38 @@ fn main() {
 
     let renderpass_attachments = [
         vk::AttachmentDescription {
-            format:       surface_format.format,
-            samples:      vk::SampleCountFlags::TYPE_1,
-            load_op:      vk::AttachmentLoadOp::CLEAR,
-            store_op:     vk::AttachmentStoreOp::STORE,
+            format: surface_format.format,
+            samples: vk::SampleCountFlags::TYPE_1,
+            load_op: vk::AttachmentLoadOp::CLEAR,
+            store_op: vk::AttachmentStoreOp::STORE,
             final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
             ..Default::default()
         },
         vk::AttachmentDescription {
-            format:         vk::Format::D16_UNORM,
-            samples:        vk::SampleCountFlags::TYPE_1,
-            load_op:        vk::AttachmentLoadOp::CLEAR,
+            format: vk::Format::D16_UNORM,
+            samples: vk::SampleCountFlags::TYPE_1,
+            load_op: vk::AttachmentLoadOp::CLEAR,
             initial_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            final_layout:   vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            final_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
             ..Default::default()
         },
     ];
 
     let color_attachment_ref = [vk::AttachmentReference {
         attachment: 0,
-        layout:     vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
     }];
     let depth_attachment_ref = vk::AttachmentReference {
         attachment: 1,
-        layout:     vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
     };
 
     let dependencies = [vk::SubpassDependency {
-        src_subpass:     vk::SUBPASS_EXTERNAL,
-        src_stage_mask:  vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-        dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_READ |
-                         vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-        dst_stage_mask:  vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+        src_subpass: vk::SUBPASS_EXTERNAL,
+        src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+        dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_READ
+            | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+        dst_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
         ..Default::default()
     }];
 
@@ -480,7 +484,7 @@ fn main() {
         .collect();
 
     let index_data: [u32; 6 * 6] = [
-        0, 1, 2, 1, 3, 2, // front 
+        0, 1, 2, 1, 3, 2, // front
         1, 0, 5, 0, 4, 5, // top
         3, 7, 2, 7, 6, 2, // bottom
         0, 2, 4, 2, 6, 4, // right
@@ -533,13 +537,10 @@ fn main() {
             .unwrap()
     };
 
-    let mut vertices = [ 
-        Vertex {
-            pos: [-0.5, 0.5, 0.0, 1.0],
-            color: [0.0, 1.0, 0.0, 1.0],
-        };
-        8
-    ];
+    let mut vertices = [Vertex {
+        pos: [-0.5, 0.5, 0.0, 1.0],
+        color: [0.0, 1.0, 0.0, 1.0],
+    }; 8];
 
     let mut vert_cnt = 0;
     for &z in [0.5, -0.5].iter() {
@@ -954,8 +955,8 @@ fn find_memory_type_index(
         .iter()
         .enumerate()
         .find(|(index, memory_type)| {
-            ((1 << index) & memory_req.memory_type_bits != 0) && 
-            ((memory_type.property_flags & flags) == flags)
+            ((1 << index) & memory_req.memory_type_bits != 0)
+                && ((memory_type.property_flags & flags) == flags)
         })
         .map(|(index, _memory_type)| index as _)
 }
@@ -978,7 +979,7 @@ fn record_submit_commandbuffer<F: FnOnce(&Device, vk::CommandBuffer)>(
         device
             .reset_fences(&[cmd_buf_reuse_fence])
             .expect("Reset fence failed.");
-            
+
         device
             .reset_command_buffer(cmd_buf, vk::CommandBufferResetFlags::RELEASE_RESOURCES)
             .expect("Reset command buffer failed.");
