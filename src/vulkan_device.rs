@@ -25,3 +25,11 @@ struct QueueFamilyIndices {
     transfer: u32,
 }
 
+impl VulkanDevice {
+    pub fn new(phyical_device: vk::PhysicalDevice, instance: vk::Instance) -> Self {
+        let phys_device_prop = 
+
+
+    }
+}
+
