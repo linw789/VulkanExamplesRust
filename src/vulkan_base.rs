@@ -18,12 +18,15 @@ use ash::{
     },
 };
 
-
 struct VulkanBase {
     window: Window,
     event_loop: EventLoop,
 
     instance: Instance,
+}
+
+struct VulkanBaseBuilder {
+
 }
 
 impl VulkanBase {
@@ -117,6 +120,12 @@ impl VulkanBase {
 
         let surface = unsafe { ash_window::create_surface(&entry, &instance, &window, None).unwrap() };
         let surface_loader = Surface::new(&entry, &instance);
+
+    }
+}
+
+impl VulkanBaseBuilder {
+    pub fn name(self, name: String) -> Self {
 
     }
 }

@@ -91,7 +91,7 @@ impl<'a, T: vk::ExtendsDeviceCreateInfo + 'a> VulkanDeviceBuilder<T> {
         // Find command queues.
 
         let queue_family_indices = QueueFamilyIndices::default(); 
-        let queue_create_infos: Vec::<vk::DeviceQueueCreateInfo> = new Vec();
+        let queue_create_infos: Vec::<vk::DeviceQueueCreateInfo> = Vec::new();
 
         let default_queue_priority = [0f32];
         let queue_family_props = unsafe { instance.get_physical_device_queue_family_properties(phys_device) };
@@ -108,7 +108,7 @@ impl<'a, T: vk::ExtendsDeviceCreateInfo + 'a> VulkanDeviceBuilder<T> {
 
         if requested_queue_types.contains(vk::QueueFlags::COMPUTE) {
             // Try to create dedicated compute queue.
-            let queue_family_indices.compute = get_queue_family_index(vk::QueueFlags::COMPUTE, queue_family_props).unwrap();
+            queue_family_indices.compute = get_queue_family_index(vk::QueueFlags::COMPUTE, queue_family_props).unwrap();
             if queue_family_indices.compute != queue_family_indices.graphics {
                 queue_create_infos.push(
                     vk::DeviceQueueCreateInfo::builder()
@@ -123,7 +123,7 @@ impl<'a, T: vk::ExtendsDeviceCreateInfo + 'a> VulkanDeviceBuilder<T> {
 
         if requested_queue_types.contains(vk::QueueFlags::TRANSFER) {
             // Try to create dedicated transfer queue.
-            let queue_family_indices.transfer = get_queue_family_index(vk::QueueFlags::TRANSFER, queue_family_props).unwrap();
+            queue_family_indices.transfer = get_queue_family_index(vk::QueueFlags::TRANSFER, queue_family_props).unwrap();
             if (queue_family_indices.transfer != queue_family_indices.graphics) && 
                (queue_family_indices.transfer != queue_family_indices.compute) {
 
@@ -142,7 +142,7 @@ impl<'a, T: vk::ExtendsDeviceCreateInfo + 'a> VulkanDeviceBuilder<T> {
         // Check is requested extensions are supported on this device.
         let supported_extensions = unsafe { self.instance.enumerate_device_extension_properties(self.physical_device).unwrap() };
         for requested_ext in self.requested_extensions.iter() {
-            bool mut supported = false;
+            let mut supported = false;
             let requested_ext_cstr = CStr::from_bytes_with_nul(requested_ext).unwrap();
 
             for ext_prop in supported_extensions.iter() {
