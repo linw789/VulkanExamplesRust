@@ -2,12 +2,15 @@ use std::borrow::Cow;
 use std::ffi::{CStr, CString};
 use std::fmt;
 
-use ash::{extensions::ext::DebugUtils, vk, Instance};
+use ash::{extensions::{ext::DebugUtils, khr::Swapchain, }, vk, Instance};
+
+use crate::vulkan_device::VulkanDevice;
+
 pub struct VulkanBase {
     app_name: String,
     entry: ash::Entry,
     instance: Instance,
-    // device: VulkanDevice,
+    device: VulkanDevice,
     debug_utils: Option<DebugUtils>,
     debug_utils_messenger: Option<vk::DebugUtilsMessengerEXT>,
 }
@@ -85,6 +88,7 @@ impl VulkanBaseBuilder {
         let layer_props = entry.enumerate_instance_layer_properties().unwrap();
         for requested_layer_name in self.layer_names.iter() {
             let mut supported = false;
+
             for layer_prop in layer_props.iter() {
                 let supported_layer_name = CStr::from_bytes_with_nul(unsafe {
                     &*(&layer_prop.layer_name as *const [i8] as *const [u8])
@@ -160,10 +164,21 @@ impl VulkanBaseBuilder {
             (None, None)
         };
 
+        // Create logical device.
+
+        let physical_devices = unsafe { instance.enumerate_physical_devices().unwrap() };
+
+        let device_extension_names = vec!(CString::from(Swapchain::name()));
+        let device = VulkanDevice::builder(&instance, physical_devices[0])
+            .with_extensions(device_extension_names)
+            .with_queue_flags(vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE)
+            .build();
+
         return Ok(VulkanBase {
             app_name,
             entry,
             instance,
+            device,
             debug_utils,
             debug_utils_messenger,
         });
