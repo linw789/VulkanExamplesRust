@@ -38,7 +38,5 @@ fn main() {
         .build()
         .unwrap();
 
-
-
     std::mem::drop(vulkan_base);
 }

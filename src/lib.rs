@@ -1,2 +1,4 @@
 pub mod vulkan_base;
-pub mod vulkan_device;
+pub mod device;
+pub mod surface;
+pub mod swapchain;

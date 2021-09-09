@@ -1,66 +1,48 @@
+use crate::surface::Surface;
+use crate::device::Device;
+
 use ash::{
-    extension::khr::{Surface, Swapchain},
-    Entry,
-    Device,
+    extensions::khr,
     Instance,
-    vk::{self, Extent2D, SwapchainCreateInfoKHR},
+    vk,
 };
 
-use winit::window::Window;
-
-pub struct VulkanSwapchain {
-    physical_device: vk::PhysicalDevice,
+pub struct Swapchain {
+    surface: Surface,
     swapchain: vk::SwapchainKHR,
-    surface: vk::SurfaceKHR,
-    surface_query: Surface,
+    swapchain_pfns: khr::Swapchain,
     present_queue_index: u32,
     color_format: vk::Format,
-    color_space: vk::ColorsSpaceKHR,
+    color_space: vk::ColorSpaceKHR,
     image_views: Vec<(vk::Image, vk::ImageView)>,
 }
 
-pub struct VulkanSwapchainBuilder {
-    physical_device: vk::PhysicalDevice,
-    swapchain: vk::SwapchainKHR,
-    surface: vk::SurfaceKHR,
-    surface_query: Surface,
-    extent: Extent2D,
-}
-
-impl VulkanSwapchain {
-    pub fn new(entry: &Entry, instance: &Instance, physical_device: vk::PhysicalDevice, logical_device: &Device, window: Window, extent: &mut Extent2D, vsync: bool) -> Self {
-        let surface = unsafe {
-            ash_window::create_surface(entry, instance, window, None).unwrap()
-        };
-
-        let surface_query = Surface::new(entry, instance);
-
-        let queue_family_props = unsafe {
-            instance.get_physical_device_queue_family_properties(physical_device).unwrap()
-        };
+impl Swapchain {
+    pub fn new(surface: Surface, instance: &Instance, device: &Device, extent: &mut vk::Extent2D, vsync: bool) -> Self {
+        let queue_family_props = device.queue_family_properties();
 
         // Find a queue that supports both graphics and presenting. The queue is used to 
         // present swap chain images to the windowing system.
-        let graphics_queue_index = None;
-        let present_queue_index = None;
+        let mut graphics_queue_index = 0;
+        let mut graphics_queue_found = false;
+        let mut present_queue_index = 0;
+        let mut present_queue_found = false;
         for (i, queue_prop) in queue_family_props.iter().enumerate() {
-            if graphics_queue_index.is_none() && queue_prop.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
-                graphics_queue_index = Some(i);
+            if !graphics_queue_found && queue_prop.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
+                graphics_queue_index = i as u32;
+                graphics_queue_found = true;
             }
             
-            if present_queue_index.is_none() {
-                let support_present = unsafe { surface_query.get_physical_device_surface_support(physical_device, i as u32, surface).unwrap() };
-                if support_present {
-                    present_queue_index = Some(i);
-                }
+            if !present_queue_found && surface.support_present(i as u32).unwrap() {
+                present_queue_index = i as u32;
+                present_queue_found = true;
             }
         }
-
-        // Separate graphics and presetn queues are not supported.
+        assert!(graphics_queue_found && present_queue_found);
+        // Separate graphics and present queues are not supported.
         assert!(graphics_queue_index == present_queue_index);
-        present_queue_index = present_queue_index.unwrap() as u32;
 
-        let surface_formats = unsafe { surface_query.get_physical_device_surface_formats(physical_device, surface).unwrap() };
+        let surface_formats = surface.formats().unwrap();
 
         // If the only format present is VK_FORMAT_UNDEFINED, there is no preferred format, 
         // so we assume VK_FORMAT_B8G8R8A8_UNORM.
@@ -85,8 +67,8 @@ impl VulkanSwapchain {
             }
         }
 
-        let surface_caps = unsafe { surface_query.get_physical_device_surface_capabilities(physical_device, surface) };
-        let present_modes = unsafe { surface_query.get_physical_device_surface_present_modes(physical_device, surface) };
+        let surface_caps = unsafe { surface_pfns.get_physical_device_surface_capabilities(physical_device, surface) };
+        let present_modes = unsafe { surface_pfns.get_physical_device_surface_present_modes(physical_device, surface) };
 
         // If width (and height) equals the special value 0xFFFFFFFF, the size of the surface will be set by the swapchain
         let swapchain_extent = match surface_caps.current_extent.width {
@@ -145,7 +127,7 @@ impl VulkanSwapchain {
             swapchain_usage_flags |= vk::ImageUsageFlags::TRANSFER_DSC;
         }
 
-        let swapchain_createinfo = SwapchainCreateInfoKHR::builder()
+        let swapchain_createinfo = vk::SwapchainCreateInfoKHR::builder()
             .surface(surface)
             .min_image_count(desired_num_swapchain_images)
             .image_format(color_format)
@@ -159,12 +141,12 @@ impl VulkanSwapchain {
             .clipped(true)
             .composite_alpha(composite_alpha);
 
-        let swapchain_query = Swapchain(instace, logical_device);
-        let swapchain = unsafe { swapchain_query.create_swapchain(&swapchain_createinfo, None).unwrap() };
+        let swapchain_pfns = khr::Swapchain(instance, logical_device);
+        let swapchain = unsafe { swapchain_pfns.create_swapchain(&swapchain_createinfo, None).unwrap() };
 
         let mut image_views = Vec::new();
 
-        let swapchain_images = unsafe { swapchain_query.get_swapchain_images(swapchain).unwrap() };
+        let swapchain_images = unsafe { swapchain_pfns.get_swapchain_images(swapchain).unwrap() };
         for image in swapchain_images {
             let color_attachment_image_view_createinfo = vk::ImageViewCreateInfo::builder()
                 .format(color_format)
@@ -188,16 +170,16 @@ impl VulkanSwapchain {
                 image_views.push((image, view));
         }
 
-        VulkanSwapchain {
-            physical_device: vk::PhysicalDevice,
-            swapchain: vk::SwapchainKHR,
-            surface: vk::SurfaceKHR,
-            surface_query: Surface,
-            present_queue_index: u32,
-            color_format: vk::Format,
-            color_space: vk::ColorsSpaceKHR,
-            image_views: Vec<(vk::Image, vk::ImageView)>,
+        khr::Swapchain {
+            physical_device,
+            swapchain,
+            swapchain_pfns, 
+            surface,
+            surface_pfns,
+            present_queue_index,
+            color_format,
+            color_space,
+            image_views,
         }
-
     }
 }

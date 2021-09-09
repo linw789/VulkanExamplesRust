@@ -4,7 +4,7 @@ use std::fmt;
 
 use ash::{extensions::{ext::DebugUtils, khr::Swapchain, }, vk, Instance};
 
-use crate::vulkan_device::VulkanDevice;
+use crate::device::VulkanDevice;
 
 pub struct VulkanBase {
     app_name: String,
@@ -173,6 +173,8 @@ impl VulkanBaseBuilder {
             .with_extensions(device_extension_names)
             .with_queue_flags(vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE)
             .build();
+
+        let swapchain = VulkanSwapchain::new(entry, instance, physical_devices, logical_device);
 
         return Ok(VulkanBase {
             app_name,

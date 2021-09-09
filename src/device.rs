@@ -2,24 +2,24 @@ use std::ffi::CString;
 use std::ffi::CStr;
 
 use ash::{
-    vk, Instance, Device
+    vk, Instance
 };
 
-pub struct VulkanDevice {
+pub struct Device {
     physical_device: vk::PhysicalDevice,
-    // phys_device_props: vk::PhysicalDeviceProperties,
-    // phys_device_features: vk::PhysicalDeviceFeatures,
-    // phys_device_mem_props: vk::PhysicalDeviceMemoryProperties,
-    // phys_device_enabled_features: vk::PhysicalDeviceFeatures,
+    // physical_device_props: vk::PhysicalDeviceProperties,
+    // physical_device_features: vk::PhysicalDeviceFeatures,
+    // physical_device_mem_props: vk::PhysicalDeviceMemoryProperties,
+    // physical_device_enabled_features: vk::PhysicalDeviceFeatures,
 
     // supported_extensions: Vec<*const c_char>,
 
+    vk_device: ash::Device,
+
+    queue_family_props: Vec<vk::QueueFamilyProperties>,
     queue_family_indices: QueueFamilyIndices,
-    // queue_family_props: Vec<vk::QueueFamilyProperties>,
 
     cmd_pool: vk::CommandPool,
-
-    logical_device: Device,
 }
 
 struct QueueFamilyIndices {
@@ -28,7 +28,7 @@ struct QueueFamilyIndices {
     transfer: u32,
 }
 
-pub struct VulkanDeviceBuilder<'a> {
+pub struct DeviceBuilder<'a> {
     instance: &'a Instance,
     physical_device: vk::PhysicalDevice,
 
@@ -39,9 +39,9 @@ pub struct VulkanDeviceBuilder<'a> {
     // next: Option<&'a T>,
 }
 
-impl VulkanDevice {
-    pub fn builder<'a>(instance: &'a Instance, physical_device: vk::PhysicalDevice) -> VulkanDeviceBuilder<'a> {
-        VulkanDeviceBuilder {
+impl Device {
+    pub fn builder<'a>(instance: &'a Instance, physical_device: vk::PhysicalDevice) -> DeviceBuilder<'a> {
+        DeviceBuilder {
             instance: instance,
             physical_device: physical_device,
 
@@ -51,6 +51,10 @@ impl VulkanDevice {
 
             // next: None,
         }
+    }
+
+    pub fn queue_family_properties(&self) -> &[vk::QueueFamilyProperties] {
+        &self.queue_family_props
     }
 }
 
@@ -64,7 +68,7 @@ impl Default for QueueFamilyIndices {
     }
 }
 
-impl<'a> VulkanDeviceBuilder<'a> {
+impl<'a> DeviceBuilder<'a> {
     pub fn with_features(mut self, enabled_features: vk::PhysicalDeviceFeatures) -> Self {
         self.enabled_features = enabled_features;
         return self;
@@ -87,7 +91,7 @@ impl<'a> VulkanDeviceBuilder<'a> {
     } 
     */
 
-    pub fn build(self) -> VulkanDevice {
+    pub fn build(self) -> Device {
 
         // Find command queues.
 
@@ -140,6 +144,7 @@ impl<'a> VulkanDeviceBuilder<'a> {
         }
 
         // Check if requested extensions are supported on this device.
+
         let mut extension_names_ptr = Vec::new();
         let supported_extensions = unsafe { self.instance.enumerate_device_extension_properties(self.physical_device).unwrap() };
         for requested_ext in self.requested_extensions.iter() {
@@ -164,12 +169,6 @@ impl<'a> VulkanDeviceBuilder<'a> {
             .enabled_extension_names(&extension_names_ptr)
             .enabled_features(&self.enabled_features);
 
-        /*
-        if let Some(next) = self.next {
-            logical_device_create_info.push_next(next);
-        }
-        */
-
         let logical_device = unsafe { self.instance.create_device(self.physical_device, &logical_device_create_info, None).unwrap() };
 
         let cmd_pool_create_info = vk::CommandPoolCreateInfo::builder()
@@ -178,11 +177,12 @@ impl<'a> VulkanDeviceBuilder<'a> {
         
         let cmd_pool = unsafe { logical_device.create_command_pool(&cmd_pool_create_info, None).unwrap() };
 
-        VulkanDevice {
+        Device {
             physical_device: self.physical_device,
-            queue_family_indices: queue_family_indices,
+            vk_device: logical_device,
+            queue_family_props,
+            queue_family_indices,
             cmd_pool: cmd_pool,
-            logical_device: logical_device,
         }
     }
 }
