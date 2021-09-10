@@ -2,7 +2,10 @@ use std::borrow::Cow;
 use std::ffi::{CStr, CString};
 use std::fmt;
 
-use ash::{extensions::{ext::DebugUtils, khr::Swapchain, }, vk, Instance};
+use ash::{
+    extensions::{ext::DebugUtils, khr::Swapchain},
+    vk, Instance,
+};
 
 use crate::device::VulkanDevice;
 
@@ -168,7 +171,7 @@ impl VulkanBaseBuilder {
 
         let physical_devices = unsafe { instance.enumerate_physical_devices().unwrap() };
 
-        let device_extension_names = vec!(CString::from(Swapchain::name()));
+        let device_extension_names = vec![CString::from(Swapchain::name())];
         let device = VulkanDevice::builder(&instance, physical_devices[0])
             .with_extensions(device_extension_names)
             .with_queue_flags(vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE)
