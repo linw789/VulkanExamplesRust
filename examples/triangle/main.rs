@@ -1,9 +1,5 @@
-use ash::extensions::{
-    ext::DebugUtils,
-    khr::{Surface, Swapchain},
-};
+use ash::extensions::{ext::DebugUtils, khr::Swapchain};
 use ash::util::*;
-// use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::{vk, Entry};
 pub use ash::{Device, Instance};
 use std::borrow::Cow;
@@ -16,6 +12,9 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
 };
 
+extern crate vulkan_examples;
+use vulkan_examples::surface::Surface;
+
 macro_rules! offset_of {
     ($base:path, $field:ident) => {
         unsafe {
@@ -27,8 +26,8 @@ macro_rules! offset_of {
 
 #[derive(Copy, Clone, Debug)]
 struct Vertex {
-    pos: [f32; 4],
-    color: [f32; 4],
+    pos: [f32; 3],
+    color: [f32; 3],
 }
 
 fn main() {
@@ -37,7 +36,7 @@ fn main() {
 
     let event_loop = EventLoop::new();
     let window = winit::window::WindowBuilder::new()
-        .with_title("Vulkan Test")
+        .with_title("Hello Triangle")
         .with_inner_size(winit::dpi::LogicalSize::new(
             WINDOW_WIDTH as f64,
             WINDOW_HEIGHT as f64,
@@ -59,17 +58,13 @@ fn main() {
         .map(|raw_name| raw_name.as_ptr())
         .collect();
 
-    let surface_extensions = ash_window::enumerate_required_extensions(&window).unwrap();
-    let mut extension_names_raw = surface_extensions
+    let mut surface_extensions = ash_window::enumerate_required_extensions(&window).unwrap();
+    surface_extensions.push(DebugUtils::name());
+    let extension_names_raw = surface_extensions
         .iter()
         .map(|ext_name| ext_name.as_ptr())
         .collect::<Vec<_>>();
-    extension_names_raw.push(DebugUtils::name().as_ptr());
-    println!(
-        "surface extensions: {:?}, {:?}",
-        DebugUtils::name(),
-        surface_extensions
-    );
+    // println!("surface extensions: {:?}", surface_extensions);
 
     let instance_create_info = vk::InstanceCreateInfo::builder()
         .application_info(&app_info)
@@ -106,38 +101,39 @@ fn main() {
             .expect("Physical device error.")
     };
 
+    /*
     for physical_device in &physical_devices {
         let physical_device_prop =
             unsafe { instance.get_physical_device_properties(*physical_device) };
         println!("physical device properties: {:?}\n", physical_device_prop);
     }
+    */
 
-    let surface = unsafe { ash_window::create_surface(&entry, &instance, &window, None).unwrap() };
-    let surface_loader = Surface::new(&entry, &instance);
+    let surface = Surface::new(&entry, &instance, &window).unwrap();
+
+    // Find the first physical device that contains a queue family that supports graphics
+    // queue as well as presentation to a given surface, also return the index of the
+    // qualified queue family.
     let (physical_device, queue_family_index) = physical_devices
         .iter()
-        .map(|device| unsafe {
+        .map(|&device| unsafe {
             instance
-                .get_physical_device_queue_family_properties(*device)
+                .get_physical_device_queue_family_properties(device)
                 .iter()
                 .enumerate()
-                .filter_map(|(index, ref queue_info)| {
+                .find_map(|(index, ref queue_info)| {
                     let supports_graphics_and_surface =
                         queue_info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                            && surface_loader
-                                .get_physical_device_surface_support(*device, index as u32, surface)
-                                .unwrap();
+                            && surface.support_present(device, index as u32).unwrap();
                     if supports_graphics_and_surface {
-                        Some((*device, index as u32))
+                        Some((device, index as u32))
                     } else {
                         None
                     }
                 })
-                .next()
         })
-        .filter_map(|v| v)
-        .next()
-        .expect("Couldn't find suitable device.");
+        .find_map(|v| v)
+        .expect("Couldn't find suitable physical device.");
 
     let priorities = [1.0];
     let queue_info = [vk::DeviceQueueCreateInfo::builder()
@@ -165,31 +161,22 @@ fn main() {
 
     let present_queue = unsafe { device.get_device_queue(queue_family_index, 0) };
 
-    let supported_surface_formats = unsafe {
-        surface_loader
-            .get_physical_device_surface_formats(physical_device, surface)
-            .unwrap()
-    };
+    let supported_surface_formats = surface.formats(physical_device).unwrap();
     let surface_format = supported_surface_formats[0];
-    println!(
-        "Supported Surface format: {:?}\n",
-        supported_surface_formats
-    );
 
-    let surface_capabilities = unsafe {
-        surface_loader
-            .get_physical_device_surface_capabilities(physical_device, surface)
-            .unwrap()
-    };
+    let surface_capabilities = surface.capabilities(physical_device).unwrap();
     println!("Surface capabilities: {:?}\n", surface_capabilities);
 
-    let mut desired_image_count = surface_capabilities.min_image_count + 1;
+    let mut swapchain_image_count = surface_capabilities.min_image_count + 1;
     if surface_capabilities.max_image_count > 0
-        && desired_image_count > surface_capabilities.max_image_count
+        && swapchain_image_count > surface_capabilities.max_image_count
     {
-        desired_image_count = surface_capabilities.max_image_count;
+        swapchain_image_count = surface_capabilities.max_image_count;
     }
 
+    // If the width (and height) equals the special value 0xffffffff, the size of the
+    // surface can be set by the swapchain. Otherwise the size of the swapchain is
+    // determined by that of the surface.
     let surface_resolution = match surface_capabilities.current_extent.width {
         std::u32::MAX => vk::Extent2D {
             width: WINDOW_WIDTH,
@@ -207,21 +194,19 @@ fn main() {
         surface_capabilities.current_transform
     };
 
-    let present_modes = unsafe {
-        surface_loader
-            .get_physical_device_surface_present_modes(physical_device, surface)
-            .unwrap()
-    };
+    let present_modes = surface.present_modes(physical_device).unwrap();
+
     let present_mode = present_modes
         .iter()
         .copied()
         .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
+        // VK_PRESENT_MODE_FIFO_KHR must be supported per the specification.
         .unwrap_or(vk::PresentModeKHR::FIFO);
 
-    let swapchain_loader = Swapchain::new(&instance, &device);
+    let swapchain = Swapchain::new(&instance, &device);
     let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
-        .surface(surface)
-        .min_image_count(desired_image_count)
+        .surface(surface.handle())
+        .min_image_count(swapchain_image_count)
         .image_color_space(surface_format.color_space)
         .image_format(surface_format.format)
         .image_extent(surface_resolution)
@@ -233,8 +218,8 @@ fn main() {
         .clipped(true)
         .image_array_layers(1);
 
-    let swapchain = unsafe {
-        swapchain_loader
+    let swapchain_handle = unsafe {
+        swapchain
             .create_swapchain(&swapchain_create_info, None)
             .unwrap()
     };
@@ -261,7 +246,7 @@ fn main() {
     let setup_cmd_buf = cmd_buffers[0];
     let draw_cmd_buf = cmd_buffers[1];
 
-    let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain).unwrap() };
+    let present_images = unsafe { swapchain.get_swapchain_images(swapchain_handle).unwrap() };
     let present_image_views: Vec<vk::ImageView> = present_images
         .iter()
         .map(|&image| {
@@ -483,14 +468,7 @@ fn main() {
         })
         .collect();
 
-    let index_data: [u32; 6 * 6] = [
-        0, 1, 2, 1, 3, 2, // front
-        1, 0, 5, 0, 4, 5, // top
-        3, 7, 2, 7, 6, 2, // bottom
-        0, 2, 4, 2, 6, 4, // right
-        1, 5, 3, 5, 7, 3, // left
-        5, 4, 7, 4, 6, 7, // back
-    ];
+    let index_data: [u32; 3] = [0, 1, 2];
 
     let index_buf_create_info = vk::BufferCreateInfo::builder()
         .size(std::mem::size_of_val(&index_data) as u64)
@@ -503,7 +481,7 @@ fn main() {
         &device_memory_properties,
         vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
     )
-    .expect("Unable to find suitable memory for index buffer.");
+    .expect("Failed to find suitable memory for index buffer.");
 
     let index_buf_alloc_info = vk::MemoryAllocateInfo {
         allocation_size: index_buf_memory_req.size,
@@ -537,20 +515,20 @@ fn main() {
             .unwrap()
     };
 
-    let mut vertices = [Vertex {
-        pos: [-0.5, 0.5, 0.0, 1.0],
-        color: [0.0, 1.0, 0.0, 1.0],
-    }; 8];
-
-    let mut vert_cnt = 0;
-    for &z in [0.5, -0.5].iter() {
-        for &y in [0.5, -0.5].iter() {
-            for &x in [0.5, -0.5].iter() {
-                vertices[vert_cnt].pos = [x, y, z, 1.0];
-                vert_cnt += 1;
-            }
-        }
-    }
+    let vertices = [
+        Vertex {
+            pos: [0.0, -0.5, 0.0],
+            color: [1.0, 0.0, 0.0],
+        },
+        Vertex {
+            pos: [0.5, 0.5, 0.0],
+            color: [0.0, 1.0, 0.0],
+        },
+        Vertex {
+            pos: [-0.5, 0.5, 0.0],
+            color: [0.0, 0.0, 1.0],
+        },
+    ];
 
     let vert_input_buf_create_info = vk::BufferCreateInfo {
         size: std::mem::size_of_val(&vertices) as u64,
@@ -662,13 +640,13 @@ fn main() {
         vk::VertexInputAttributeDescription {
             location: 0,
             binding: 0,
-            format: vk::Format::R32G32B32A32_SFLOAT,
+            format: vk::Format::R32G32B32_SFLOAT,
             offset: offset_of!(Vertex, pos) as u32,
         },
         vk::VertexInputAttributeDescription {
             location: 1,
             binding: 0,
-            format: vk::Format::R32G32B32A32_SFLOAT,
+            format: vk::Format::R32G32B32_SFLOAT,
             offset: offset_of!(Vertex, color) as u32,
         },
     ];
@@ -811,9 +789,9 @@ fn main() {
                         device.destroy_image_view(image_view, None)
                     }
                     device.destroy_command_pool(cmd_pool, None);
-                    swapchain_loader.destroy_swapchain(swapchain, None);
+                    swapchain.destroy_swapchain(swapchain_handle, None);
                     device.destroy_device(None);
-                    surface_loader.destroy_surface(surface, None);
+                    surface.destroy();
                     debug_utils_loader.destroy_debug_utils_messenger(debug_callback, None);
                     instance.destroy_instance(None);
                 }
@@ -823,9 +801,9 @@ fn main() {
             Event::MainEventsCleared => {
                 // render loop
                 unsafe {
-                    let (present_index, _) = swapchain_loader
+                    let (present_index, _) = swapchain
                         .acquire_next_image(
-                            swapchain,
+                            swapchain_handle,
                             std::u64::MAX,
                             present_complete_semaphore,
                             vk::Fence::null(),
@@ -900,14 +878,14 @@ fn main() {
                     );
 
                     let wait_semaphores = [rendering_complete_semaphore];
-                    let swapchains = [swapchain];
+                    let swapchains = [swapchain_handle];
                     let image_indices = [present_index];
                     let present_info = vk::PresentInfoKHR::builder()
                         .wait_semaphores(&wait_semaphores)
                         .swapchains(&swapchains)
                         .image_indices(&image_indices);
 
-                    swapchain_loader
+                    swapchain
                         .queue_present(present_queue, &present_info)
                         .unwrap();
                 }
@@ -946,6 +924,8 @@ unsafe extern "system" fn vulkan_debug_callback(
     return vk::FALSE;
 }
 
+/// Find the index of the physical device's memory type that has the properties
+/// indicated by `flags`.
 fn find_memory_type_index(
     memory_req: &vk::MemoryRequirements,
     memory_prop: &vk::PhysicalDeviceMemoryProperties,

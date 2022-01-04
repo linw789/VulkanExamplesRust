@@ -1,4 +1,3 @@
-pub mod device;
+pub mod camera;
+pub mod shader;
 pub mod surface;
-pub mod swapchain;
-pub mod vulkan_base;

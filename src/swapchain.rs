@@ -1,4 +1,3 @@
-use crate::device::Device;
 use crate::surface::Surface;
 
 use ash::{extensions::khr, vk, Instance};

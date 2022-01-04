@@ -1,59 +1,73 @@
-use ash::{extensions::khr, prelude::*, vk, Entry, Instance};
-
+use ash::prelude::*;
+use ash::{extensions::khr, vk, Entry, Instance};
 use winit::window::Window;
 
 pub struct Surface {
-    surface: vk::SurfaceKHR,
-    surface_pfns: khr::Surface,
-    physical_device: vk::PhysicalDevice,
+    surface_handle: vk::SurfaceKHR,
+    surface: khr::Surface,
 }
 
 impl Surface {
-    pub fn new(
-        entry: &Entry,
-        instance: &Instance,
+    pub fn new(entry: &Entry, instance: &Instance, window: &Window) -> VkResult<Self> {
+        let surface_handle = unsafe { ash_window::create_surface(entry, instance, window, None)? };
+
+        Ok(Surface {
+            surface_handle,
+            surface: khr::Surface::new(entry, instance),
+        })
+    }
+
+    pub fn destroy(&self) {
+        unsafe { self.surface.destroy_surface(self.surface_handle, None) }
+    }
+
+    pub fn handle(&self) -> vk::SurfaceKHR {
+        self.surface_handle
+    }
+
+    /// Check whether a queue family of a _physical device_ supports presentation
+    /// to this surface.
+    pub fn support_present(
+        &self,
         physical_device: vk::PhysicalDevice,
-        window: &Window,
-    ) -> Self {
-        let surface = Surface {
-            surface: unsafe { ash_window::create_surface(entry, instance, window, None).unwrap() },
-            surface_pfns: khr::Surface::new(entry, instance),
-            physical_device,
-        };
-    }
-
-    pub fn vk_surface(&self) -> vk::SurfaceKHR {
-        self.surface
-    }
-
-    pub fn support_present(&self, queue_index: u32) -> VkResult<bool> {
+        queue_index: u32,
+    ) -> VkResult<bool> {
         unsafe {
-            self.surface_pfns.get_physical_device_surface_support(
-                self.physical_device,
+            self.surface.get_physical_device_surface_support(
+                physical_device,
                 queue_index,
-                self.surface,
+                self.surface_handle,
             )
         }
     }
 
-    pub fn formats(&self) -> VkResult<Vec<vk::SurfaceFormatKHR>> {
+    pub fn formats(
+        &self,
+        physical_device: vk::PhysicalDevice,
+    ) -> VkResult<Vec<vk::SurfaceFormatKHR>> {
         unsafe {
-            self.surface_pfns
-                .get_physical_device_surface_formats(self.physical_device, self.surface)
+            self.surface
+                .get_physical_device_surface_formats(physical_device, self.surface_handle)
         }
     }
 
-    pub fn capabilities(&self) -> VkResult<vk::SurfaceCapabilitiesKHR> {
+    pub fn capabilities(
+        &self,
+        physical_device: vk::PhysicalDevice,
+    ) -> VkResult<vk::SurfaceCapabilitiesKHR> {
         unsafe {
-            self.surface_pfns
-                .get_physical_device_surface_capabilities(self.physical_device, self.surface)
+            self.surface
+                .get_physical_device_surface_capabilities(physical_device, self.surface_handle)
         }
     }
 
-    pub fn present_modes(&self) -> VkResult<Vec<vk::PresentModeKHR>> {
+    pub fn present_modes(
+        &self,
+        physical_device: vk::PhysicalDevice,
+    ) -> VkResult<Vec<vk::PresentModeKHR>> {
         unsafe {
-            self.surface_pfns
-                .get_physical_device_surface_present_modes(self.physical_device, self.surface)
+            self.surface
+                .get_physical_device_surface_present_modes(physical_device, self.surface_handle)
         }
     }
 }

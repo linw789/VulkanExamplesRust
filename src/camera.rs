@@ -1,73 +1,59 @@
-use cgmath::{Matrix4, Vector3, perspective, Rad};
+use cgmath::{perspective, Deg, Matrix4, SquareMatrix, Vector3, Zero};
 
 pub struct Camera {
-    fovy: f32, // vertical field of view, in radian
+    fovy: Deg<f32>, // vertical field of view
     znear: f32,
     zfar: f32,
 
-    translation: Vector3,
-    rotation: Vector3, // rotation angles (in radian) around x, y and z axes respectively
+    translation: Vector3<f32>,
+    rotation: Vector3<f32>, // rotation angles around x, y and z axes respectively
 
-    perspective: Matrix4,
-    view: Matrix4,
-
-    flip_y: f32, // either 1 or -1
+    perspective: Matrix4<f32>,
+    view: Matrix4<f32>,
 }
 
 impl Camera {
-    pub fn new() -> Self {
-        let mut camera = Camera {
-            fovy: 0,
-            znear: 0,
-            zfar: 0,
-            translation: Vector3::zero(),
-            rotation: Vector3::zero(),
-            perspective: Matrix4::indentity(),
-            view: Matrix4::identity(),
-            flip_y: 1,
-        }
-    }
-
-    pub fn set_flip_y(&mut self, flip_y: bool) {
-        if flip_y == true {
-            self.flip_y = -1;
-        } else {
-            self.flip_y = 1;
-        }
-    }
-
     /// Rotate `delta` (in radian) around x, y and z axes from the current orientation.
-    pub fn rotate(&mut self, delta: Vector3) {
+    pub fn rotate(&mut self, delta: Vector3<f32>) {
         self.rotation += delta;
     }
 
-    pub fn translate(&mut self, delta: Vector3) {
-        self.position += delta;
+    pub fn translate(&mut self, delta: Vector3<f32>) {
+        self.translation += delta;
     }
 
     /// Set the perspective projection matrix.
     /// `fovy` - Vertical field of view in radian.
-    /// `aspect` - Aspect ratio of the near clipping plane.
-    pub fn set_perspective(&mut self, fovy: f32, aspect: f32, znear: f32, zfar: f32) {
+    /// `aspect` - Aspect ratio (width / height) of the near clipping plane.
+    pub fn set_perspective(&mut self, fovy: Deg<f32>, aspect: f32, znear: f32, zfar: f32) {
         self.fovy = fovy;
         self.znear = znear;
         self.zfar = zfar;
 
-        self.perspective = perspective(fov, aspect, znear, zfar);
-        self.perspective[1][1] *= flip_y;
+        self.perspective = perspective(fovy, aspect, znear, zfar);
     }
 
     pub fn update_view_matrix(&mut self) {
-        let rot_x = Matrix4::from_angle_x(self.rotation.x * self.flip_y);
-        let rot_y = Matrix4::from_angle_y(self.rotation.y);
-        let rot_z = Matrix4::from_angle_z(self.rotation.z);
-        let rot = rot_x * rot_y * rot_z;
-
-        let trans = self.translation;
-        trans.y *= self.flip_y;
-        trans_mat = Matrix4::from_translation(trans);
-
-        self.view = trans_mat * rot;
+        type Mat4 = Matrix4<f32>;
+        let rot = Mat4::from_angle_z(Deg(self.rotation.z))
+            * Mat4::from_angle_y(Deg(self.rotation.y))
+            * Mat4::from_angle_x(Deg(self.rotation.x));
+        self.view = Mat4::from_translation(self.translation) * rot;
     }
+
+    pub fn set_rotation(&mut self) {}
 }
 
+impl Default for Camera {
+    fn default() -> Self {
+        Self {
+            fovy: Deg(60.0),
+            znear: 1.0,
+            zfar: 256.0,
+            translation: Vector3::<f32>::zero(),
+            rotation: Vector3::<f32>::zero(),
+            perspective: Matrix4::<f32>::identity(),
+            view: Matrix4::<f32>::identity(),
+        }
+    }
+}
