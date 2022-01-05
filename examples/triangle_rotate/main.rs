@@ -3,10 +3,10 @@
 use ash::extensions::{ext::DebugUtils, khr::Swapchain};
 use ash::prelude::VkResult;
 use ash::util::*;
-use ash::vk::DescriptorPoolCreateInfo;
+use ash::vk::{DescriptorPoolCreateInfo, TransformMatrixKHR};
 use ash::{vk, Entry};
 pub use ash::{Device, Instance};
-use cgmath::{Deg, Matrix4};
+use cgmath::{Deg, Matrix4, SquareMatrix, Transform};
 use std::borrow::Cow;
 use std::default::Default;
 use std::ffi::{CStr, CString};
@@ -48,10 +48,16 @@ struct Vertex {
 /// This way we can just memcopy ubo data to ubo.
 /// Note, you should use data types that align with the GPU in order to
 /// avoid manual padding (e.g. vec4, mat4).
-struct UniformBufferObject {
+struct TransformMatrices {
     projection: Matrix4<f32>,
     view: Matrix4<f32>,
     model: Matrix4<f32>,
+}
+
+struct TransformMatricesUniformBuffer {
+    memory: vk::DeviceMemory,
+    buffer: vk::Buffer,
+    descriptor: vk::DescriptorBufferInfo,
 }
 
 fn create_descriptor_set_layouts(device: &Device) -> Vec<vk::DescriptorSetLayout> {
@@ -146,9 +152,12 @@ fn create_descriptor_set(
     desc_sets
 }
 
-fn create_uniform_buffers(device: &Device, mem_props: &vk::PhysicalDeviceMemoryProperties) -> {
+fn create_uniform_buffers(
+    device: &Device,
+    mem_props: &vk::PhysicalDeviceMemoryProperties,
+) -> TransformMatricesUniformBuffer {
     let ubo_create_info = vk::BufferCreateInfo::builder()
-        .size(std::mem::size_of::<UniformBufferObject>() as u64)
+        .size(std::mem::size_of::<TransformMatrices>() as u64)
         .usage(vk::BufferUsageFlags::UNIFORM_BUFFER);
 
     let uniform_buf = unsafe { device.create_buffer(&ubo_create_info, None).unwrap() };
@@ -174,6 +183,47 @@ fn create_uniform_buffers(device: &Device, mem_props: &vk::PhysicalDeviceMemoryP
             .bind_buffer_memory(uniform_buf, uniform_buf_memory, 0)
             .unwrap()
     };
+
+    let transform_uniform_buf = TransformMatricesUniformBuffer {
+        memory: uniform_buf_memory,
+        buffer: uniform_buf,
+        descriptor: vk::DescriptorBufferInfo {
+            buffer: uniform_buf,
+            offset: 0,
+            range: vk::WHOLE_SIZE,
+        },
+    };
+
+    transform_uniform_buf
+}
+
+fn update_uniform_buffer(
+    device: &Device,
+    uniform_buf: &TransformMatricesUniformBuffer,
+    matrices: &TransformMatrices,
+) {
+    let device_mem_ptr = unsafe {
+        device
+            .map_memory(
+                uniform_buf.memory,
+                0,
+                std::mem::size_of::<TransformMatrices>() as u64,
+                vk::MemoryMapFlags::empty(),
+            )
+            .unwrap()
+    };
+
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            matrices as *const TransformMatrices,
+            device_mem_ptr as *mut TransformMatrices,
+            1,
+        );
+    }
+
+    unsafe {
+        device.unmap_memory(uniform_buf.memory);
+    }
 }
 
 fn destroy_uniform_buffers() {}
@@ -872,11 +922,22 @@ fn main() {
         .render_pass(renderpass);
 
     let descriptor_set_pool = create_descriptor_pool(&device);
+
+    let transform_buf = create_uniform_buffers(&device, &device_memory_properties);
+
+    let tranx_matrces = TransformMatrices {
+        projection: Matrix4::<f32>::identity(),
+        view: Matrix4::<f32>::identity(),
+        model: Matrix4::<f32>::identity(),
+    };
+
+    update_uniform_buffer(&device, &transform_buf, &tranx_matrces);
+
     let descriptor_set = create_descriptor_set(
         &device,
         descriptor_set_pool,
         &desc_set_layouts,
-        &desc_buf_infos,
+        &[transform_buf.descriptor.clone()],
     );
 
     let graphics_pipelines = unsafe {
