@@ -122,7 +122,7 @@ fn create_descriptor_pool(device: &Device) -> vk::DescriptorPool {
     desc_pool
 }
 
-fn create_descriptor_set(
+fn create_descriptor_sets(
     device: &Device,
     desc_pool: vk::DescriptorPool,
     desc_set_layouts: &[vk::DescriptorSetLayout],
@@ -226,7 +226,9 @@ fn update_uniform_buffer(
     }
 }
 
-fn destroy_uniform_buffers() {}
+fn destroy_uniform_buffers() {
+    todo!()
+}
 
 fn create_pipeline() {
     todo!()
@@ -358,7 +360,6 @@ fn main() {
     let surface_format = supported_surface_formats[0];
 
     let surface_capabilities = surface.capabilities(physical_device).unwrap();
-    println!("Surface capabilities: {:?}\n", surface_capabilities);
 
     let mut swapchain_image_count = surface_capabilities.min_image_count + 1;
     if surface_capabilities.max_image_count > 0
@@ -925,7 +926,7 @@ fn main() {
 
     let transform_buf = create_uniform_buffers(&device, &device_memory_properties);
 
-    let tranx_matrces = TransformMatrices {
+    let mut tranx_matrces = TransformMatrices {
         projection: Matrix4::<f32>::identity(),
         view: Matrix4::<f32>::identity(),
         model: Matrix4::<f32>::identity(),
@@ -933,7 +934,7 @@ fn main() {
 
     update_uniform_buffer(&device, &transform_buf, &tranx_matrces);
 
-    let descriptor_set = create_descriptor_set(
+    let descriptor_sets = create_descriptor_sets(
         &device,
         descriptor_set_pool,
         &desc_set_layouts,
@@ -965,12 +966,20 @@ fn main() {
                         device.destroy_pipeline(pipeline, None);
                     }
                     device.destroy_pipeline_layout(pipeline_layout, None);
+                    for &desc_layout in desc_set_layouts.iter() {
+                        device.destroy_descriptor_set_layout(desc_layout, None);
+                    }
+                    device.destroy_descriptor_pool(descriptor_set_pool, None);
                     device.destroy_shader_module(shader_vert.handle(), None);
                     device.destroy_shader_module(shader_frag.handle(), None);
                     device.free_memory(index_buf_memory, None);
                     device.destroy_buffer(index_buf, None);
                     device.free_memory(vert_input_buf_memory, None);
                     device.destroy_buffer(vert_input_buf, None);
+
+                    device.destroy_buffer(transform_buf.buffer, None);
+                    device.free_memory(transform_buf.memory, None);
+
                     for &framebuffer in framebuffers.iter() {
                         device.destroy_framebuffer(framebuffer, None);
                     }
@@ -1000,6 +1009,14 @@ fn main() {
                 *control_flow = ControlFlow::Exit;
             }
             Event::MainEventsCleared => {
+                let c = tranx_matrces.projection[0][0];
+                if c >= 255.0 {
+                    tranx_matrces.projection[0][0] = 0.0;
+                } else {
+                    tranx_matrces.projection[0][0] = c + 1.0;
+                }
+                update_uniform_buffer(&device, &transform_buf, &tranx_matrces);
+
                 // render loop
                 unsafe {
                     let (present_index, _) = swapchain
@@ -1046,6 +1063,14 @@ fn main() {
                                 draw_command_buffer,
                                 &render_pass_begin_info,
                                 vk::SubpassContents::INLINE,
+                            );
+                            device.cmd_bind_descriptor_sets(
+                                draw_command_buffer,
+                                vk::PipelineBindPoint::GRAPHICS,
+                                pipeline_layout,
+                                0,
+                                &descriptor_sets,
+                                &[]
                             );
                             device.cmd_bind_pipeline(
                                 draw_command_buffer,

@@ -12,8 +12,9 @@ layout (binding = 0) uniform UBO
 
 layout (location = 0) out vec3 out_color;
 
-void main() 
+void main()
 {
-    out_color = in_color;
+    float val = ubo.projective[0][0] / 255.0;
+    out_color = vec3(val, val, val);
     gl_Position = vec4(in_pos, 1.0);
 }
