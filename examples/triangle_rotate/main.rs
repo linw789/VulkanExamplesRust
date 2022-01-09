@@ -6,7 +6,8 @@ use ash::util::*;
 use ash::vk::{DescriptorPoolCreateInfo, TransformMatrixKHR};
 use ash::{vk, Entry};
 pub use ash::{Device, Instance};
-use cgmath::{Deg, Matrix4, SquareMatrix, Transform};
+use cgmath::{Deg, Matrix4, SquareMatrix, Vector3, Zero, perspective};
+use winit::event::{DeviceEvent, MouseScrollDelta};
 use std::borrow::Cow;
 use std::default::Default;
 use std::ffi::{CStr, CString};
@@ -36,6 +37,22 @@ struct Vertex {
     color: [f32; 3],
 }
 
+struct Transform {
+    translate: Vector3<f32>,
+    rotate: Vector3<f32>,
+    scale: Vector3<f32>,
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self {
+            translate: Vector3::<f32>::zero(),
+            rotate: Vector3::<f32>::zero(),
+            scale: Vector3::<f32>::new(1.0, 1.0, 1.0),
+        }
+    }
+}
+
 /// For simplicity we use the same uniform block layout as in the shader.
 /// ```
 /// layout (binding = 0) uniform UBO
@@ -50,8 +67,8 @@ struct Vertex {
 /// avoid manual padding (e.g. vec4, mat4).
 struct TransformMatrices {
     projection: Matrix4<f32>,
-    view: Matrix4<f32>,
-    model: Matrix4<f32>,
+    view: Matrix4<f32>, // world-to-camera
+    model: Matrix4<f32>, // model-to-world
 }
 
 struct TransformMatricesUniformBuffer {
@@ -224,14 +241,6 @@ fn update_uniform_buffer(
     unsafe {
         device.unmap_memory(uniform_buf.memory);
     }
-}
-
-fn destroy_uniform_buffers() {
-    todo!()
-}
-
-fn create_pipeline() {
-    todo!()
 }
 
 fn main() {
@@ -717,7 +726,9 @@ fn main() {
             .unwrap()
     };
 
+    // A triangle in model space.
     let vertices = [
+        /*
         Vertex {
             pos: [0.0, -0.5, 0.0],
             color: [1.0, 0.0, 0.0],
@@ -728,6 +739,19 @@ fn main() {
         },
         Vertex {
             pos: [-0.5, 0.5, 0.0],
+            color: [0.0, 0.0, 1.0],
+        },
+        */
+        Vertex {
+            pos: [0.0, 2.5, 0.0],
+            color: [1.0, 0.0, 0.0],
+        },
+        Vertex {
+            pos: [-2.5, -2.5, 0.0],
+            color: [0.0, 1.0, 0.0],
+        },
+        Vertex {
+            pos: [2.5, -2.5, 0.0],
             color: [0.0, 0.0, 1.0],
         },
     ];
@@ -926,13 +950,24 @@ fn main() {
 
     let transform_buf = create_uniform_buffers(&device, &device_memory_properties);
 
-    let mut tranx_matrces = TransformMatrices {
+    let mut tranx_matrices = TransformMatrices {
         projection: Matrix4::<f32>::identity(),
         view: Matrix4::<f32>::identity(),
         model: Matrix4::<f32>::identity(),
     };
 
-    update_uniform_buffer(&device, &transform_buf, &tranx_matrces);
+    let mut transform = Transform::default();
+
+    let mut camera_world_pos = Vector3::<f32>::new(0.0, 0.0, 5.0);
+    tranx_matrices.view = Matrix4::<f32>::from_translation(camera_world_pos).invert().unwrap();
+    tranx_matrices.projection = perspective(
+        Deg(60.0),
+        (surface_resolution.width as f32) / (surface_resolution.height as f32),
+        1.0,
+        256.0
+    );
+
+    update_uniform_buffer(&device, &transform_buf, &tranx_matrices);
 
     let descriptor_sets = create_descriptor_sets(
         &device,
@@ -956,6 +991,28 @@ fn main() {
         *control_flow = ControlFlow::Poll;
 
         match event {
+            Event::DeviceEvent {
+                event: DeviceEvent::MouseMotion { delta },
+                ..
+            } => {
+                transform.rotate.y += delta.0 as f32;
+                transform.rotate.x += delta.1 as f32;
+
+                tranx_matrices.model = Matrix4::<f32>::from_angle_y(Deg(transform.rotate.y)) *
+                    Matrix4::<f32>::from_angle_x(Deg(transform.rotate.x));
+
+                update_uniform_buffer(&device, &transform_buf, &tranx_matrices);
+            }
+            Event::DeviceEvent {
+                event: DeviceEvent::MouseWheel {
+                    delta: MouseScrollDelta::LineDelta(_, y)
+                },
+                ..
+            } => {
+                camera_world_pos.z -= y;
+                tranx_matrices.view = Matrix4::<f32>::from_translation(camera_world_pos).invert().unwrap();
+                update_uniform_buffer(&device, &transform_buf, &tranx_matrices);
+            }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
@@ -1009,15 +1066,16 @@ fn main() {
                 *control_flow = ControlFlow::Exit;
             }
             Event::MainEventsCleared => {
-                let c = tranx_matrces.projection[0][0];
-                if c >= 255.0 {
-                    tranx_matrces.projection[0][0] = 0.0;
-                } else {
-                    tranx_matrces.projection[0][0] = c + 1.0;
-                }
-                update_uniform_buffer(&device, &transform_buf, &tranx_matrces);
-
                 // render loop
+
+                /*
+                tranx_matrices.model[3][3] += 0.5;
+                if tranx_matrices.model[3][3] > 255.0 {
+                    tranx_matrices.model[3][3] = 0.0
+                }
+                update_uniform_buffer(&device, &transform_buf, &tranx_matrices);
+                */
+
                 unsafe {
                     let (present_index, _) = swapchain
                         .acquire_next_image(
