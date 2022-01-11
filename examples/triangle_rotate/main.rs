@@ -20,7 +20,7 @@ use winit::{
 };
 
 extern crate vulkan_examples;
-use vulkan_examples::{camera::Camera, shader::ShaderModule, surface::Surface};
+use vulkan_examples::{camera::Camera, shader::ShaderModule, surface::Surface, transform::Transform};
 
 macro_rules! offset_of {
     ($base:path, $field:ident) => {
@@ -35,22 +35,6 @@ macro_rules! offset_of {
 struct Vertex {
     pos: [f32; 3],
     color: [f32; 3],
-}
-
-struct Transform {
-    translate: Vector3<f32>,
-    rotate: Vector3<f32>,
-    scale: Vector3<f32>,
-}
-
-impl Default for Transform {
-    fn default() -> Self {
-        Self {
-            translate: Vector3::<f32>::zero(),
-            rotate: Vector3::<f32>::zero(),
-            scale: Vector3::<f32>::new(1.0, 1.0, 1.0),
-        }
-    }
 }
 
 /// For simplicity we use the same uniform block layout as in the shader.
@@ -728,20 +712,6 @@ fn main() {
 
     // A triangle in model space.
     let vertices = [
-        /*
-        Vertex {
-            pos: [0.0, -0.5, 0.0],
-            color: [1.0, 0.0, 0.0],
-        },
-        Vertex {
-            pos: [0.5, 0.5, 0.0],
-            color: [0.0, 1.0, 0.0],
-        },
-        Vertex {
-            pos: [-0.5, 0.5, 0.0],
-            color: [0.0, 0.0, 1.0],
-        },
-        */
         Vertex {
             pos: [0.0, 2.5, 0.0],
             color: [1.0, 0.0, 0.0],
@@ -995,11 +965,9 @@ fn main() {
                 event: DeviceEvent::MouseMotion { delta },
                 ..
             } => {
-                transform.rotate.y += delta.0 as f32;
-                transform.rotate.x += delta.1 as f32;
+                transform.add_rotation(Vector3::<f32>::new(delta.0 as f32, delta.1 as f32, 0.0));
 
-                tranx_matrices.model = Matrix4::<f32>::from_angle_y(Deg(transform.rotate.y)) *
-                    Matrix4::<f32>::from_angle_x(Deg(transform.rotate.x));
+                tranx_matrices.model = transform.get_transform_mat4();
 
                 update_uniform_buffer(&device, &transform_buf, &tranx_matrices);
             }
@@ -1066,16 +1034,6 @@ fn main() {
                 *control_flow = ControlFlow::Exit;
             }
             Event::MainEventsCleared => {
-                // render loop
-
-                /*
-                tranx_matrices.model[3][3] += 0.5;
-                if tranx_matrices.model[3][3] > 255.0 {
-                    tranx_matrices.model[3][3] = 0.0
-                }
-                update_uniform_buffer(&device, &transform_buf, &tranx_matrices);
-                */
-
                 unsafe {
                     let (present_index, _) = swapchain
                         .acquire_next_image(

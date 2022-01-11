@@ -1,27 +1,17 @@
 use cgmath::{perspective, Deg, Matrix4, SquareMatrix, Vector3, Zero};
+use crate::transform::Transform;
 
 pub struct Camera {
     fovy: Deg<f32>, // vertical field of view
     znear: f32,
     zfar: f32,
 
-    translation: Vector3<f32>,
-    rotation: Vector3<f32>, // rotation angles around x, y and z axes respectively
-
     perspective: Matrix4<f32>,
-    view: Matrix4<f32>,
+
+    transform: Transform,
 }
 
 impl Camera {
-    /// Rotate `delta` (in radian) around x, y and z axes from the current orientation.
-    pub fn rotate(&mut self, delta: Vector3<f32>) {
-        self.rotation += delta;
-    }
-
-    pub fn translate(&mut self, delta: Vector3<f32>) {
-        self.translation += delta;
-    }
-
     /// Set the perspective projection matrix.
     /// `fovy` - Vertical field of view in radian.
     /// `aspect` - Aspect ratio (width / height) of the near clipping plane.
@@ -33,12 +23,10 @@ impl Camera {
         self.perspective = perspective(fovy, aspect, znear, zfar);
     }
 
-    pub fn update_view_matrix(&mut self) {
-        type Mat4 = Matrix4<f32>;
-        let rot = Mat4::from_angle_z(Deg(self.rotation.z))
-            * Mat4::from_angle_y(Deg(self.rotation.y))
-            * Mat4::from_angle_x(Deg(self.rotation.x));
-        self.view = Mat4::from_translation(self.translation) * rot;
+    /// Get world-to-camera transformation matrix.
+    pub fn get_view_matrix(&self) -> Matrix4<f32> {
+        let matrix = self.transform.get_transform_mat4();
+        matrix.invert().unwrap()
     }
 
     pub fn set_rotation(&mut self) {}
@@ -50,10 +38,8 @@ impl Default for Camera {
             fovy: Deg(60.0),
             znear: 1.0,
             zfar: 256.0,
-            translation: Vector3::<f32>::zero(),
-            rotation: Vector3::<f32>::zero(),
             perspective: Matrix4::<f32>::identity(),
-            view: Matrix4::<f32>::identity(),
+            transform: Transform::default(),
         }
     }
 }
