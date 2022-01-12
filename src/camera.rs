@@ -1,5 +1,5 @@
-use cgmath::{perspective, Deg, Matrix4, SquareMatrix, Vector3, Zero};
 use crate::transform::Transform;
+use cgmath::{perspective, Deg, Matrix4, SquareMatrix, Vector3};
 
 pub struct Camera {
     fovy: Deg<f32>, // vertical field of view
@@ -23,13 +23,23 @@ impl Camera {
         self.perspective = perspective(fovy, aspect, znear, zfar);
     }
 
+    pub fn get_projection_mat4(&self) -> Matrix4<f32> {
+        self.perspective
+    }
+
     /// Get world-to-camera transformation matrix.
     pub fn get_view_matrix(&self) -> Matrix4<f32> {
         let matrix = self.transform.get_transform_mat4();
         matrix.invert().unwrap()
     }
 
-    pub fn set_rotation(&mut self) {}
+    pub fn rotate(&mut self, delta: Vector3<f32>) {
+        self.transform.add_rotation(delta);
+    }
+
+    pub fn move_delta(&mut self, delta: Vector3<f32>) {
+        self.transform.add_translation(delta);
+    }
 }
 
 impl Default for Camera {

@@ -1,4 +1,4 @@
-use cgmath::{Deg, Matrix4, SquareMatrix, Vector3, Zero};
+use cgmath::{Deg, Matrix4, Vector3, Zero};
 
 type Vec3 = Vector3<f32>;
 type Mat4 = Matrix4<f32>;
@@ -14,12 +14,24 @@ impl Transform {
         self.translation += delta;
     }
 
+    pub fn set_translation(&mut self, t: Vec3) {
+        self.translation = t;
+    }
+
     pub fn add_rotation(&mut self, delta: Vec3) {
         self.rotation += delta;
     }
 
+    pub fn set_rotation(&mut self, rot: Vec3) {
+        self.rotation = rot;
+    }
+
     pub fn add_scale(&mut self, delta: Vec3) {
         self.scale += delta;
+    }
+
+    pub fn set_scale(&mut self, scale: Vec3) {
+        self.scale = scale;
     }
 
     pub fn get_transform_mat4(&self) -> Mat4 {

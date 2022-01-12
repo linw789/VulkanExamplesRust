@@ -6,21 +6,23 @@ use ash::util::*;
 use ash::vk::{DescriptorPoolCreateInfo, TransformMatrixKHR};
 use ash::{vk, Entry};
 pub use ash::{Device, Instance};
-use cgmath::{Deg, Matrix4, SquareMatrix, Vector3, Zero, perspective};
-use winit::event::{DeviceEvent, MouseScrollDelta};
+use cgmath::{perspective, Deg, Matrix4, SquareMatrix, Vector3, Zero};
 use std::borrow::Cow;
 use std::default::Default;
 use std::ffi::{CStr, CString};
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::vec::Vec;
+use winit::event::{DeviceEvent, MouseScrollDelta};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
 };
 
 extern crate vulkan_examples;
-use vulkan_examples::{camera::Camera, shader::ShaderModule, surface::Surface, transform::Transform};
+use vulkan_examples::{
+    camera::Camera, shader::ShaderModule, surface::Surface, transform::Transform,
+};
 
 macro_rules! offset_of {
     ($base:path, $field:ident) => {
@@ -51,7 +53,7 @@ struct Vertex {
 /// avoid manual padding (e.g. vec4, mat4).
 struct TransformMatrices {
     projection: Matrix4<f32>,
-    view: Matrix4<f32>, // world-to-camera
+    view: Matrix4<f32>,  // world-to-camera
     model: Matrix4<f32>, // model-to-world
 }
 
@@ -928,14 +930,17 @@ fn main() {
 
     let mut transform = Transform::default();
 
-    let mut camera_world_pos = Vector3::<f32>::new(0.0, 0.0, 5.0);
-    tranx_matrices.view = Matrix4::<f32>::from_translation(camera_world_pos).invert().unwrap();
-    tranx_matrices.projection = perspective(
+    let mut camera = Camera::default();
+    camera.set_perspective(
         Deg(60.0),
         (surface_resolution.width as f32) / (surface_resolution.height as f32),
         1.0,
-        256.0
+        256.0,
     );
+    camera.move_delta(Vector3::<f32>::new(0.0, 0.0, 5.0));
+
+    tranx_matrices.view = camera.get_view_matrix();
+    tranx_matrices.projection = camera.get_projection_mat4();
 
     update_uniform_buffer(&device, &transform_buf, &tranx_matrices);
 
@@ -972,13 +977,15 @@ fn main() {
                 update_uniform_buffer(&device, &transform_buf, &tranx_matrices);
             }
             Event::DeviceEvent {
-                event: DeviceEvent::MouseWheel {
-                    delta: MouseScrollDelta::LineDelta(_, y)
-                },
+                event:
+                    DeviceEvent::MouseWheel {
+                        delta: MouseScrollDelta::LineDelta(_, y),
+                    },
                 ..
             } => {
-                camera_world_pos.z -= y;
-                tranx_matrices.view = Matrix4::<f32>::from_translation(camera_world_pos).invert().unwrap();
+                camera.move_delta(Vector3::<f32>::new(0.0, 0.0, -y));
+                tranx_matrices.view = camera.get_view_matrix();
+
                 update_uniform_buffer(&device, &transform_buf, &tranx_matrices);
             }
             Event::WindowEvent {
@@ -1033,105 +1040,103 @@ fn main() {
 
                 *control_flow = ControlFlow::Exit;
             }
-            Event::MainEventsCleared => {
-                unsafe {
-                    let (present_index, _) = swapchain
-                        .acquire_next_image(
-                            swapchain_handle,
-                            std::u64::MAX,
-                            present_complete_semaphore,
-                            vk::Fence::null(),
-                        )
-                        .unwrap();
-                    let clear_values = [
-                        vk::ClearValue {
-                            color: vk::ClearColorValue {
-                                float32: [0.0, 0.0, 0.0, 0.0],
-                            },
+            Event::MainEventsCleared => unsafe {
+                let (present_index, _) = swapchain
+                    .acquire_next_image(
+                        swapchain_handle,
+                        std::u64::MAX,
+                        present_complete_semaphore,
+                        vk::Fence::null(),
+                    )
+                    .unwrap();
+                let clear_values = [
+                    vk::ClearValue {
+                        color: vk::ClearColorValue {
+                            float32: [0.0, 0.0, 0.0, 0.0],
                         },
-                        vk::ClearValue {
-                            depth_stencil: vk::ClearDepthStencilValue {
-                                depth: 1.0,
-                                stencil: 0,
-                            },
+                    },
+                    vk::ClearValue {
+                        depth_stencil: vk::ClearDepthStencilValue {
+                            depth: 1.0,
+                            stencil: 0,
                         },
-                    ];
+                    },
+                ];
 
-                    let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-                        .render_pass(renderpass)
-                        .framebuffer(framebuffers[present_index as usize])
-                        .render_area(vk::Rect2D {
-                            offset: vk::Offset2D { x: 0, y: 0 },
-                            extent: surface_resolution,
-                        })
-                        .clear_values(&clear_values);
+                let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+                    .render_pass(renderpass)
+                    .framebuffer(framebuffers[present_index as usize])
+                    .render_area(vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent: surface_resolution,
+                    })
+                    .clear_values(&clear_values);
 
-                    record_submit_commandbuffer(
-                        &device,
-                        draw_cmd_buf,
-                        draw_cmds_reuse_fence,
-                        present_queue,
-                        &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
-                        &[present_complete_semaphore],
-                        &[rendering_complete_semaphore],
-                        |device, draw_command_buffer| {
-                            device.cmd_begin_render_pass(
-                                draw_command_buffer,
-                                &render_pass_begin_info,
-                                vk::SubpassContents::INLINE,
-                            );
-                            device.cmd_bind_descriptor_sets(
-                                draw_command_buffer,
-                                vk::PipelineBindPoint::GRAPHICS,
-                                pipeline_layout,
-                                0,
-                                &descriptor_sets,
-                                &[]
-                            );
-                            device.cmd_bind_pipeline(
-                                draw_command_buffer,
-                                vk::PipelineBindPoint::GRAPHICS,
-                                graphics_pipeline,
-                            );
-                            device.cmd_set_viewport(draw_command_buffer, 0, &viewports);
-                            device.cmd_set_scissor(draw_command_buffer, 0, &scissors);
-                            device.cmd_bind_vertex_buffers(
-                                draw_command_buffer,
-                                0,
-                                &[vert_input_buf],
-                                &[0],
-                            );
-                            device.cmd_bind_index_buffer(
-                                draw_command_buffer,
-                                index_buf,
-                                0,
-                                vk::IndexType::UINT32,
-                            );
-                            device.cmd_draw_indexed(
-                                draw_command_buffer,
-                                index_data.len() as u32,
-                                1,
-                                0,
-                                0,
-                                1,
-                            );
-                            device.cmd_end_render_pass(draw_command_buffer);
-                        },
-                    );
+                record_submit_commandbuffer(
+                    &device,
+                    draw_cmd_buf,
+                    draw_cmds_reuse_fence,
+                    present_queue,
+                    &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
+                    &[present_complete_semaphore],
+                    &[rendering_complete_semaphore],
+                    |device, draw_command_buffer| {
+                        device.cmd_begin_render_pass(
+                            draw_command_buffer,
+                            &render_pass_begin_info,
+                            vk::SubpassContents::INLINE,
+                        );
+                        device.cmd_bind_descriptor_sets(
+                            draw_command_buffer,
+                            vk::PipelineBindPoint::GRAPHICS,
+                            pipeline_layout,
+                            0,
+                            &descriptor_sets,
+                            &[],
+                        );
+                        device.cmd_bind_pipeline(
+                            draw_command_buffer,
+                            vk::PipelineBindPoint::GRAPHICS,
+                            graphics_pipeline,
+                        );
+                        device.cmd_set_viewport(draw_command_buffer, 0, &viewports);
+                        device.cmd_set_scissor(draw_command_buffer, 0, &scissors);
+                        device.cmd_bind_vertex_buffers(
+                            draw_command_buffer,
+                            0,
+                            &[vert_input_buf],
+                            &[0],
+                        );
+                        device.cmd_bind_index_buffer(
+                            draw_command_buffer,
+                            index_buf,
+                            0,
+                            vk::IndexType::UINT32,
+                        );
+                        device.cmd_draw_indexed(
+                            draw_command_buffer,
+                            index_data.len() as u32,
+                            1,
+                            0,
+                            0,
+                            1,
+                        );
+                        device.cmd_end_render_pass(draw_command_buffer);
+                    },
+                );
 
-                    let wait_semaphores = [rendering_complete_semaphore];
-                    let swapchains = [swapchain_handle];
-                    let image_indices = [present_index];
-                    let present_info = vk::PresentInfoKHR::builder()
-                        .wait_semaphores(&wait_semaphores)
-                        .swapchains(&swapchains)
-                        .image_indices(&image_indices);
+                let wait_semaphores = [rendering_complete_semaphore];
+                let swapchains = [swapchain_handle];
+                let image_indices = [present_index];
+                let present_info = vk::PresentInfoKHR::builder()
+                    .wait_semaphores(&wait_semaphores)
+                    .swapchains(&swapchains)
+                    .image_indices(&image_indices);
 
-                    swapchain
-                        .queue_present(present_queue, &present_info)
-                        .unwrap();
-                }
-            }
+                swapchain
+                    .queue_present(present_queue, &present_info)
+                    .unwrap();
+            },
             _ => (),
         }
     });
