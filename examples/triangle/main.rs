@@ -71,7 +71,7 @@ fn main() {
         .enabled_layer_names(&layer_names_raw)
         .enabled_extension_names(&extension_names_raw);
 
-    let entry = unsafe { Entry::new().unwrap() };
+    let entry = Entry::linked();
 
     let instance: Instance = unsafe {
         entry
@@ -85,7 +85,11 @@ fn main() {
                 | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
                 | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
         )
-        .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
+        .message_type(
+            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+        )
         .pfn_user_callback(Some(vulkan_debug_callback));
 
     let debug_utils_loader = DebugUtils::new(&entry, &instance);
@@ -109,7 +113,7 @@ fn main() {
     }
     */
 
-    let surface = Surface::new(&entry, &instance, &window).unwrap();
+    let surface = Surface::new(&entry, instance.clone(), &window).unwrap();
 
     // Find the first physical device that contains a queue family that supports graphics
     // queue as well as presentation to a given surface, also return the index of the
@@ -716,7 +720,10 @@ fn main() {
         src_alpha_blend_factor: vk::BlendFactor::ZERO,
         dst_alpha_blend_factor: vk::BlendFactor::ZERO,
         alpha_blend_op: vk::BlendOp::ADD,
-        color_write_mask: vk::ColorComponentFlags::all(),
+        color_write_mask: vk::ColorComponentFlags::R
+            | vk::ColorComponentFlags::G
+            | vk::ColorComponentFlags::B
+            | vk::ColorComponentFlags::A,
     }];
     let color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo::builder()
         .logic_op(vk::LogicOp::CLEAR)
